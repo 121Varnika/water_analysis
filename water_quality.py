@@ -1,118 +1,185 @@
 import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
-
-# Initialize an empty DataFrame to store the data
-columns = ['pH', 'TDS', 'Turbidity', 'Fe', 'WQI', 'Status']
-data = pd.DataFrame(columns=columns)
+import numpy as np
+from datetime import datetime
+import os
 
 # Function to calculate WQI
-def calculate_wqi(pH, TDS, turbidity, Fe):
-    weights = {
-        'pH': 0.2,
-        'TDS': 0.3,
-        'Turbidity': 0.3,
-        'Fe': 0.2
+def calculate_wqi(pH, TDS, Turbidity, Fe):
+    pH_score = 100 - abs(7.5 - pH) * 20
+    TDS_score = max(0, 100 - TDS / 5)
+    Turbidity_score = max(0, 100 - Turbidity * 20)
+    Fe_score = max(0, 100 - Fe * 333)
+    return min(100, max(0, (pH_score * 0.3 + TDS_score * 0.2 + Turbidity_score * 0.3 + Fe_score * 0.2)))
+
+# Save each entry to Excel
+def save_to_excel(data_dict, filename='water_quality_log.xlsx'):
+    df_new = pd.DataFrame([data_dict])
+    if os.path.exists(filename):
+        df_existing = pd.read_excel(filename)
+        df_combined = pd.concat([df_existing, df_new], ignore_index=True)
+    else:
+        df_combined = df_new
+    df_combined.to_excel(filename, index=False)
+    print(f"📁 Data saved to {filename}")
+
+# Analysis function
+def analyze_water_quality():
+    global current_readings, wqi, status, current_month, monthly_avg
+
+    # Generate dummy historical data
+    historical_data = pd.DataFrame({
+        'Date': pd.date_range(start='2023-01-01', end='2023-12-31', freq='D'),
+        'pH': np.random.uniform(6.5, 8.5, 365),
+        'TDS': np.random.uniform(100, 500, 365),
+        'Turbidity': np.random.uniform(0.1, 5.0, 365),
+        'Fe': np.random.uniform(0.01, 0.3, 365)
+    })
+    historical_data['Month'] = historical_data['Date'].dt.month_name()
+    monthly_avg = historical_data.groupby('Month').mean(numeric_only=True).reset_index()
+    current_month = datetime.now().strftime('%B')
+
+    # User input
+    print("\nEnter current water quality readings:")
+    current_readings = {
+        'pH': float(input("pH (6.5-8.5): ")),
+        'TDS': float(input("TDS (100-500 ppm): ")),
+        'Turbidity': float(input("Turbidity (0.1-5.0 NTU): ")),
+        'Fe': float(input("Iron content (0.01-0.3 mg/L): "))
     }
 
-    # Normalize and clip to avoid weird extremes
-    normalized_ph = np.clip(((pH - 6.0) / (8.5 - 6.0)) * 100, 0, 100)
-    normalized_tds = np.clip(((TDS - 0) / (500 - 0)) * 100, 0, 100)
-    normalized_turbidity = np.clip(((turbidity - 0) / (5 - 0)) * 100, 0, 100)
-    normalized_fe = np.clip(((Fe - 0) / (0.3 - 0)) * 100, 0, 100)
+    # WQI Calculation
+    wqi = calculate_wqi(**current_readings)
+    status = "Excellent" if wqi >= 90 else "Good" if wqi >= 70 else "Fair" if wqi >= 50 else "Poor"
 
-    # Weighted scores
-    WQI = (normalized_ph * weights['pH'] +
-           normalized_tds * weights['TDS'] +
-           normalized_turbidity * weights['Turbidity'] +
-           normalized_fe * weights['Fe'])
-    return WQI
+    # Display Results
+    print("\n" + "=" * 50)
+    print(f"WQI: {wqi:.2f} - Status: {status}")
+    print("=" * 50)
 
-# WQI status checker
-def interpret_wqi(WQI):
-    if WQI <= 50:
-        return "Excellent 💎"
-    elif WQI <= 100:
-        return "Good ✅"
-    elif WQI <= 200:
-        return "Poor ⚠️"
-    elif WQI <= 300:
-        return "Very Poor 🚫"
-    else:
-        return "Unfit for Consumption ☠️"
+    # Alerts and Recommendations
+    alerts = []
+    recommendations = []
 
-# Spike check
-def check_for_spike(new_value, previous_value, threshold=20):
-    return abs(new_value - previous_value) > threshold
+    if current_readings['pH'] < 6.5:
+        alerts.append("🧪 pH is acidic — may increase iron solubility")
+        recommendations.append("Add pH increaser (soda ash)")
+    elif current_readings['pH'] > 8.5:
+        alerts.append("🧪 pH is alkaline — may cause scaling")
+        recommendations.append("Add pH decreaser (muriatic acid)")
 
-# === USER INPUT LOOP ===
-while True:
-    # Get input
-    pH = float(input("Enter pH value: "))
-    TDS = float(input("Enter TDS value (mg/L): "))
-    turbidity = float(input("Enter Turbidity value (NTU): "))
-    Fe = float(input("Enter Fe value (mg/L): "))
+    if current_readings['TDS'] > 500:
+        alerts.append("📈 TDS above safe limit - water may taste salty")
+        recommendations.append("Install RO system or distiller")
 
-    # Calculate WQI and status
-    WQI = calculate_wqi(pH, TDS, turbidity, Fe)
-    status = interpret_wqi(WQI)
+    if current_readings['Turbidity'] > 5:
+        alerts.append("🌫 High turbidity - possible contamination")
+        recommendations.append("Improve filtration (sand/activated carbon)")
 
-    # Add to DataFrame
-    new_entry = pd.DataFrame([[pH, TDS, turbidity, Fe, WQI, status]], columns=columns)
-    data = pd.concat([data, new_entry], ignore_index=True)
+    if current_readings['Fe'] > 0.3:
+        alerts.append("⚠️ Iron (Fe) is very high - this can stain pipes")
+        recommendations.append("Use iron filter or oxidize (aeration + filtration)")
 
-    # === Smart Alerts ===
-    print(f"\n💧 WQI: {WQI:.2f} — Status: {status}")
+    if alerts:
+        print("\n🔍 ALERTS:")
+        for alert in alerts:
+            print(alert)
 
-    if len(data) > 1:
-        if check_for_spike(TDS, data['TDS'].iloc[-2]):
-            print("🚨 Alert: TDS spike detected!")
-        if check_for_spike(turbidity, data['Turbidity'].iloc[-2]):
-            print("🚨 Alert: Turbidity spike detected!")
+    if recommendations:
+        print("\n💡 RECOMMENDATIONS:")
+        for rec in recommendations:
+            print(f"- {rec}")
 
-    # 🌡 Inter-feature awareness
-    if pH < 6.0:
-        print("🧪 pH is acidic — this might cause iron (Fe) to increase.")
-    if Fe > 0.3:
-        print("⚠️ Iron (Fe) is very high — this can stain pipes and affect taste.")
-    if TDS > 500:
-        print("📈 TDS above safe limit — water may taste salty or bitter.")
-    if turbidity > 5:
-        print("🌫 High turbidity — possible contamination or poor filtration.")
+    # Plotting
+    features = ['pH', 'TDS', 'Turbidity', 'Fe']
+    fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+    plt.style.use('seaborn-v0_8-whitegrid')
+    colors = ['#3498db', '#2ecc71']
+    threshold_color = '#e74c3c'
 
-    # Plot scatter correlations
-    if len(data) > 1:
-        plt.figure(figsize=(12, 6))
+    for i, feature in enumerate(features):
+        ax = axes[i // 2, i % 2]
+        current_val = current_readings[feature]
+        avg_val = monthly_avg[monthly_avg['Month'] == current_month][feature].values[0]
+        bars = ax.bar([0, 1], [current_val, avg_val],
+                      width=0.5,
+                      color=colors,
+                      edgecolor='white',
+                      linewidth=2,
+                      zorder=3)
+        ax.grid(axis='y', linestyle='--', alpha=0.7, zorder=0)
+        ax.spines[['top', 'right']].set_visible(False)
+        ax.spines[['left', 'bottom']].set_color('#dddddd')
+        ax.set_xticks([0, 1])
+        ax.set_xticklabels(['CURRENT', 'AVG'],
+                           fontsize=10,
+                           fontweight='bold',
+                           rotation=45)
+        ax.set_title(feature.upper(),
+                     fontsize=12,
+                     fontweight='bold',
+                     pad=12,
+                     color='#333333')
+        ax.set_ylabel('VALUE',
+                      fontsize=9,
+                      labelpad=8)
+        for bar in bars:
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width() / 2,
+                    height + 0.05 * max(current_val, avg_val),
+                    f'{height:.2f}',
+                    ha='center',
+                    va='bottom',
+                    fontsize=10,
+                    fontweight='bold',
+                    color='#333333')
+        if feature == 'pH':
+            ax.axhspan(6.5, 8.5, facecolor='#2ecc7055', zorder=1)
+            ax.axhline(6.5, color=threshold_color, linestyle=':', linewidth=1.5, zorder=2)
+            ax.axhline(8.5, color=threshold_color, linestyle=':', linewidth=1.5, zorder=2)
+            ax.text(0.5, 6.3, 'SAFE RANGE',
+                    ha='center',
+                    fontsize=8,
+                    color=threshold_color)
+        else:
+            threshold = 500 if feature == 'TDS' else 5.0 if feature == 'Turbidity' else 0.3
+            ax.axhline(threshold,
+                       color=threshold_color,
+                       linestyle=':',
+                       linewidth=1.5,
+                       zorder=2)
+            ax.text(1.1, threshold * 1.05, 'MAX THRESHOLD',
+                    ha='right',
+                    fontsize=8,
+                    color=threshold_color)
 
-        plt.subplot(1, 2, 1)
-        plt.scatter(data['TDS'], data['Turbidity'], color='blue')
-        plt.title('TDS vs Turbidity')
-        plt.xlabel('TDS (mg/L)')
-        plt.ylabel('Turbidity (NTU)')
+    fig.suptitle(f'WATER QUALITY ANALYSIS | {current_month.upper()} {datetime.now().year}\nWQI: {wqi:.1f} ({status})',
+                 y=0.98,
+                 fontsize=14,
+                 fontweight='bold',
+                 color='#333333')
 
-        plt.subplot(1, 2, 2)
-        plt.scatter(data['pH'], data['Fe'], color='green')
-        plt.title('pH vs Fe')
-        plt.xlabel('pH')
-        plt.ylabel('Fe (mg/L)')
+    plt.tight_layout(pad=3)
+    plt.show()
 
-        plt.tight_layout()
-        plt.show()
+# Run the input loop
+def run_interactive_session():
+    print("💧 SMART WATER QUALITY MONITORING SYSTEM 💧")
+    while True:
+        analyze_water_quality()
 
-        # 💥 Correlation heatmap
-        print("\n🔍 Correlation between features:")
-        plt.figure(figsize=(6, 4))
-        sns.heatmap(data[columns[:-2]].corr(), annot=True, cmap='coolwarm', fmt=".2f")
-        plt.title("Correlation Heatmap")
-        plt.tight_layout()
-        plt.show()
+        # Add metadata and save
+        current_readings['Date'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        current_readings['WQI'] = wqi
+        current_readings['Status'] = status
+        save_to_excel(current_readings)
 
-    # Continue or not
-    cont = input("\n➡️  Enter another set? (yes/no): ")
-    if cont.lower() != 'yes':
-        break
+        # Continue prompt
+        repeat = input("\nDo you want to enter another reading? (y/n): ").strip().lower()
+        if repeat != 'y':
+            print("🚪 Exiting the session. Bye!")
+            break
 
-# Save data
-data.to_csv("water_quality_data.csv", index=False)
-print("\n✅ Data saved to 'water_quality_data.csv'")
+# Start the program
+run_interactive_session()
+
