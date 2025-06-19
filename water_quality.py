@@ -17,7 +17,7 @@ def calculate_wqi(pH, TDS, turbidity, Fe):
     }
 
     # Normalize and clip to avoid weird extremes
-    normalized_ph = np.clip(((pH - 6.5) / (8.5 - 6.5)) * 100, 0, 100)
+    normalized_ph = np.clip(((pH - 6.0) / (8.5 - 6.0)) * 100, 0, 100)
     normalized_tds = np.clip(((TDS - 0) / (500 - 0)) * 100, 0, 100)
     normalized_turbidity = np.clip(((turbidity - 0) / (5 - 0)) * 100, 0, 100)
     normalized_fe = np.clip(((Fe - 0) / (0.3 - 0)) * 100, 0, 100)
@@ -72,7 +72,7 @@ while True:
             print("🚨 Alert: Turbidity spike detected!")
 
     # 🌡 Inter-feature awareness
-    if pH < 6.5:
+    if pH < 6.0:
         print("🧪 pH is acidic — this might cause iron (Fe) to increase.")
     if Fe > 0.3:
         print("⚠️ Iron (Fe) is very high — this can stain pipes and affect taste.")
